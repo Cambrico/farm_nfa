@@ -11,7 +11,7 @@ services:
     decorates: farm_ui_map.map_render_event_subscriber
     decoration_priority: 1
     arguments:
-      [ '@entity_type.manager', '@farm_map.layer_style_loader', '@current_route_match', '@request_stack', '@key.repository' ] 
+      [ '@entity_type.manager', '@farm_map.layer_style_loader', '@current_route_match', '@request_stack', '@key.repository', '@farm_nfa.gfw_api_service' ]
   farm_nfa.referer_plan_loader:
     class: Drupal\farm_nfa\FarmNfaRefererPlanLoader
     arguments: ['@request_stack']
@@ -39,3 +39,6 @@ services:
       [ '@entity_type.manager' ]
     tags:
       - { name: breadcrumb_builder, priority: 1003 }
+  farm_nfa.gfw_api_service:
+    class: 'Drupal\farm_nfa\Service\GfwApiService'
+    arguments: ['@config.factory', '@http_client_factory', '@logger.factory']
