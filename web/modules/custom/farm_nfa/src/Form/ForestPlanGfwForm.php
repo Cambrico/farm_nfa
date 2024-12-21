@@ -4,9 +4,10 @@ namespace Drupal\farm_nfa\Form;
 
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\farm_nfa\Service\GfwApiService;
 use Drupal\key\KeyRepositoryInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -29,7 +30,7 @@ class ForestPlanGfwForm extends FormBase {
    * @var \Symfony\Component\HttpFoundation\Request
    */
   protected $request;
-  
+
   /**
    * The key repository.
    *
@@ -38,17 +39,29 @@ class ForestPlanGfwForm extends FormBase {
   protected $keyRepository;
 
   /**
+   * The GFW API service.
+   *
+   * @var \Drupal\farm_nfa\Api\GfwApiService
+   */
+  protected $gfwApiService;
+
+  /**
    * Constructs a new ForestPlanGfwForm.
    *
    * @param \Drupal\Core\Routing\RouteMatchInterface $routeMatch
    *   The current route match.
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The current request.
+   * @param \Drupal\key\KeyRepositoryInterface $keyRepository
+   *   The key repository.
+   * @param \Drupal\farm_nfa\Service\GfwApiService $gfw_api_service
+   *   The GFW API service.
    */
-  public function __construct(RouteMatchInterface $routeMatch, Request $request, KeyRepositoryInterface $keyRepository) {
+  public function __construct(RouteMatchInterface $routeMatch, Request $request, KeyRepositoryInterface $keyRepository, GfwApiService $gfw_api_service) {
     $this->routeMatch = $routeMatch;
     $this->request = $request;
     $this->keyRepository = $keyRepository;
+    $this->gfwApiService = $gfw_api_service;
   }
 
   /**
@@ -58,7 +71,8 @@ class ForestPlanGfwForm extends FormBase {
     return new static(
       $container->get('current_route_match'),
       $container->get('request_stack')->getCurrentRequest(),
-      $container->get('key.repository')
+      $container->get('key.repository'),
+      $container->get('farm_nfa.gfw_api_service')
     );
   }
 
@@ -84,8 +98,14 @@ class ForestPlanGfwForm extends FormBase {
     if ($asset && $asset->hasField('land_type') && !$asset->get('land_type')->isEmpty()) {
       $landType = $asset->get('land_type')->value;
     }
-    $gfw_api_key = $this->keyRepository->getKey('gfw_api_key');
-    $gfw_api_key = $gfw_api_key ? $gfw_api_key->getKeyValue() : '';
+    $gfw_api_user = $this->keyRepository->getKey('gfw_api_user');
+    $gfw_api_password = $this->keyRepository->getKey('gfw_api_password');
+    $gfw_api_user = $gfw_api_user ? $gfw_api_user->getKeyValue() : '';
+    $gfw_api_password = $gfw_api_password ? $gfw_api_password->getKeyValue() : '';
+    $gfw_api_key = $this->gfwApiService->generateGfwApiKey('https://data-api.globalforestwatch.org', [
+      'username' => $gfw_api_user,
+      'password' => $gfw_api_password,
+    ]);
     $form['gfw_map'] = [
       '#type' => 'farm_map',
       '#map_type' => 'farm_nfa_plan_locations',

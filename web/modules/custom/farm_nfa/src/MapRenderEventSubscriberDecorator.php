@@ -10,6 +10,7 @@ use Drupal\farm_ui_map\EventSubscriber\MapRenderEventSubscriber;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Drupal\key\KeyRepositoryInterface;
+use Drupal\farm_nfa\Service\GfwApiService;
 
 /**
  * Decorates MapRenderEventSubscriber to exclude some routes.
@@ -38,6 +39,13 @@ class MapRenderEventSubscriberDecorator extends MapRenderEventSubscriber {
   protected $keyRepository;
 
   /**
+   * The GFW API service.
+   *
+   * @var \Drupal\farm_nfa\Service\GfwApiService
+   */
+  protected $gfwApiService;
+
+  /**
    * Constructs a new MapRenderEventSubscriberDecorator.
    *
    *   The entity type manager service.
@@ -50,11 +58,12 @@ class MapRenderEventSubscriberDecorator extends MapRenderEventSubscriber {
    * @param \Drupal\key\KeyRepositoryInterface $keyRepository
    *  The key repository.
    */
-  public function __construct(EntityTypeManagerInterface $entity_type_manager, LayerStyleLoaderInterface $layer_style_loader, RouteMatchInterface $routeMatch, RequestStack $requestStack, KeyRepositoryInterface $keyRepository) {
+  public function __construct(EntityTypeManagerInterface $entity_type_manager, LayerStyleLoaderInterface $layer_style_loader, RouteMatchInterface $routeMatch, RequestStack $requestStack, KeyRepositoryInterface $keyRepository, GfwApiService $gfw_api_service) {
     parent::__construct($entity_type_manager, $layer_style_loader);
     $this->routeMatch = $routeMatch;
     $this->request = $requestStack->getCurrentRequest();
     $this->keyRepository = $keyRepository;
+    $this->gfwApiService = $gfw_api_service;
   }
 
   /**
@@ -66,7 +75,8 @@ class MapRenderEventSubscriberDecorator extends MapRenderEventSubscriber {
       $container->get('farm_map.layer_style_loader'),
       $container->get('current_route_match'),
       $container->get('request_stack')->getCurrentRequest(),
-      $container->get('key.repository')
+      $container->get('key.repository'),
+      $container->get('farm_nfa.gfw_api_service')
     );
   }
 
@@ -106,8 +116,11 @@ class MapRenderEventSubscriberDecorator extends MapRenderEventSubscriber {
       $asset = $this->routeMatch->getParameter('asset');
       if ($asset->bundle() == 'land' && $asset->hasField('land_type') && !$asset->get('land_type')->isEmpty()) {
         $event->addBehavior('farm_nfa_land_cfr_layer');
-        $gfw_api_key = $this->keyRepository->getKey('gfw_api_key');
-        $gfw_api_key = $gfw_api_key ? $gfw_api_key->getKeyValue() : '';
+        $gfw_api_user = $this->keyRepository->getKey('gfw_api_user');
+        $gfw_api_password = $this->keyRepository->getKey('gfw_api_password');
+        $gfw_api_user = $gfw_api_user ? $gfw_api_user->getKeyValue() : '';
+        $gfw_api_password = $gfw_api_password ? $gfw_api_password->getKeyValue() : '';
+        $gfw_api_key = $this->gfwApiService->generateGfwApiKey('https://data-api.globalforestwatch.org', ['username' => $gfw_api_user, 'password' => $gfw_api_password]);
         // Add the GFW layer.
         $settings[$event->getMapTargetId()] = [
           'asset' => $this->routeMatch->getRawParameter('asset'),
