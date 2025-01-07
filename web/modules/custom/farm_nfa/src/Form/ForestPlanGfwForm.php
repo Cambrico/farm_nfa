@@ -201,14 +201,13 @@ class ForestPlanGfwForm extends FormBase {
           'organization' => 'nfa',
           'email' => $options['username'],
         ];
-        $response = $client->post($endpoint.'/auth/apikey', [
+        $client->post($endpoint.'/auth/apikey', [
           'headers' => [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
           ],
           'json' => $queryParams,
         ]);
-        $response = json_decode($response->getBody(), TRUE);
         $validApiKey = $apiKeysResponse['data'][$apiKeysLength - 1]['api_key'];
       }
       return $validApiKey;
