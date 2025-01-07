@@ -6,8 +6,11 @@ use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Site\Settings;
 use Drupal\key\KeyRepositoryInterface;
 use Symfony\Component\HttpFoundation\Request;
+use DateTime;
+use DateInterval;
 
 /**
  * Forest plan gfw form.
@@ -84,8 +87,11 @@ class ForestPlanGfwForm extends FormBase {
     if ($asset && $asset->hasField('land_type') && !$asset->get('land_type')->isEmpty()) {
       $landType = $asset->get('land_type')->value;
     }
-    $gfw_api_key = $this->keyRepository->getKey('gfw_api_key');
-    $gfw_api_key = $gfw_api_key ? $gfw_api_key->getKeyValue() : '';
+    $gfw_api_user = $this->keyRepository->getKey('gfw_api_user');
+    $gfw_api_password = $this->keyRepository->getKey('gfw_api_password');
+    $gfw_api_user = $gfw_api_user ? $gfw_api_user->getKeyValue() : '';
+    $gfw_api_password = $gfw_api_password ? $gfw_api_password->getKeyValue() : '';
+    $gfw_api_key = $this->generateGfwApiKey('https://data-api.globalforestwatch.org', ['username' => $gfw_api_user, 'password' => $gfw_api_password]);
     $form['gfw_map'] = [
       '#type' => 'farm_map',
       '#map_type' => 'farm_nfa_plan_locations',
@@ -132,7 +138,87 @@ class ForestPlanGfwForm extends FormBase {
 
     return $form;
   }
+  
+  /**
+   * Fetches data from the GFW API.
+   *
+   * @param string $endpoint
+   *   The API endpoint to call.
+   * @param array $options
+   *   An optional array of options to pass to the HTTP client.
+   *
+   * @return string|null
+   *   The API Key as a string, or NULL on failure.
+   */
+  private function generateGfwApiKey(string $endpoint, array $options = []) {
+    try {
+      if (empty($options['username']) || empty($options['password'])) {
+        return NULL;
+      }
+      // Generate Auth Token
+      $client = \Drupal::httpClient();
+      $params = [
+        'username' => $options['username'],
+        'password' => $options['password'],
+        'grant_type' => 'password',
+      ];
+      // Make the POST request with x-www-form-urlencoded data.
+      $response = $client->post($endpoint.'/auth/token', [
+        'form_params' => $params,
+        'headers' => [
+          'Content-Type' => 'application/x-www-form-urlencoded',
+        ],
+      ]);
+      $response = json_decode($response->getBody(), TRUE);
+      $accessToken = $response['data']['access_token'];
+      $apiKeysResponse = $client->get($endpoint.'/auth/apikeys', [
+        'headers' => [
+          'Authorization' => 'Bearer ' . $accessToken,
+          'Content-Type' => 'application/json',
+        ],
+      ]);
+      $apiKeysResponse = json_decode($apiKeysResponse->getBody(), TRUE);
+      // Get the current date and time
+      $currentDate = new DateTime();
+      // Add 7 days using DateInterval
+      $currentDate->add(new DateInterval('P7D'));
+      // Initialize the variable to store the valid API key
+      $apiKeysLength = count($apiKeysResponse['data']);
+      $validApiKey = NULL;
 
+      // Iterate over the array and break when the condition is met
+      foreach ($apiKeysResponse['data'] as $item) {
+        $expiryDate = new DateTime($item['expires_on']);
+        if (($expiryDate >= $currentDate) && ($item['organization'] == 'nfa')) {
+          $validApiKey = $item['api_key'];
+          break;
+        }
+      }
+      if ($validApiKey == NULL) {
+        // Generate a new API key as the current one is expired
+        $queryParams = [
+          'alias' => 'nfa-api-key-'. $currentDate->format('Y-m-d'),
+          'organization' => 'nfa',
+          'email' => $options['username'],
+        ];
+        $client->post($endpoint.'/auth/apikey', [
+          'headers' => [
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Content-Type' => 'application/json',
+          ],
+          'json' => $queryParams,
+        ]);
+        $validApiKey = $apiKeysResponse['data'][$apiKeysLength - 1]['api_key'];
+      }
+      return $validApiKey;
+    }
+    catch (\Exception $e) {
+      // Log the error and return NULL.
+      \Drupal::logger('farm_nfa')->error('GFW API call failed: @message', ['@message' => $e->getMessage()]);
+      return NULL;
+    }
+  }
+  
   /**
    * {@inheritdoc}
    */
