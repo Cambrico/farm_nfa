@@ -6,9 +6,11 @@ use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
-use Drupal\Core\Datetime\DateTime;
+use Drupal\Core\Site\Settings;
 use Drupal\key\KeyRepositoryInterface;
 use Symfony\Component\HttpFoundation\Request;
+use DateTime;
+use DateInterval;
 
 /**
  * Forest plan gfw form.
@@ -90,8 +92,6 @@ class ForestPlanGfwForm extends FormBase {
     $gfw_api_user = $gfw_api_user ? $gfw_api_user->getKeyValue() : '';
     $gfw_api_password = $gfw_api_password ? $gfw_api_password->getKeyValue() : '';
     $gfw_api_key = $this->generateGfwApiKey('https://data-api.globalforestwatch.org', ['username' => $gfw_api_user, 'password' => $gfw_api_password]);
-    error_log(print_r(is_string($gfw_api_key), TRUE));
-    error_log(print_r('testing 123', TRUE));
     $form['gfw_map'] = [
       '#type' => 'farm_map',
       '#map_type' => 'farm_nfa_plan_locations',
@@ -157,7 +157,6 @@ class ForestPlanGfwForm extends FormBase {
       }
       // Generate Auth Token
       $client = \Drupal::httpClient();
-      // 'e08964ab-1bc0-4b29-b6fe-0d2de9b522d1'
       $params = [
         'username' => $options['username'],
         'password' => $options['password'],
@@ -172,24 +171,47 @@ class ForestPlanGfwForm extends FormBase {
       ]);
       $response = json_decode($response->getBody(), TRUE);
       $accessToken = $response['data']['access_token'];
-      // Make the GET request with the token tp generate API key.
-      $queryParams = [
-        'alias' => 'nfa-api-key-'.time(),
-        'organization' => 'nfa',
-        'email' => $options['username'],
-      ];
-      error_log(print_r($accessToken, true));
-      $response = $client->post($endpoint.'/auth/apikey', [
+      $apiKeysResponse = $client->get($endpoint.'/auth/apikeys', [
         'headers' => [
           'Authorization' => 'Bearer ' . $accessToken,
           'Content-Type' => 'application/json',
         ],
-        'json' => $queryParams,
       ]);
-      $response = json_decode($response->getBody(), TRUE);
-      $api_key = $response['data']['api_key'];
-      error_log(print_r($api_key, true));
-      return $api_key;
+      $apiKeysResponse = json_decode($apiKeysResponse->getBody(), TRUE);
+      // Get the current date and time
+      $currentDate = new DateTime();
+      // Add 7 days using DateInterval
+      $currentDate->add(new DateInterval('P7D'));
+      // Initialize the variable to store the valid API key
+      $apiKeysLength = count($apiKeysResponse['data']);
+      $validApiKey = NULL;
+
+      // Iterate over the array and break when the condition is met
+      foreach ($apiKeysResponse['data'] as $item) {
+        $expiryDate = new DateTime($item['expires_on']);
+        if (($expiryDate >= $currentDate) && ($item['organization'] == 'nfa')) {
+          $validApiKey = $item['api_key'];
+          break;
+        }
+      }
+      if ($validApiKey == NULL) {
+        // Generate a new API key as the current one is expired
+        $queryParams = [
+          'alias' => 'nfa-api-key-'. $currentDate->format('Y-m-d'),
+          'organization' => 'nfa',
+          'email' => $options['username'],
+        ];
+        $response = $client->post($endpoint.'/auth/apikey', [
+          'headers' => [
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Content-Type' => 'application/json',
+          ],
+          'json' => $queryParams,
+        ]);
+        $response = json_decode($response->getBody(), TRUE);
+        $validApiKey = $apiKeysResponse['data'][$apiKeysLength - 1]['api_key'];
+      }
+      return $validApiKey;
     }
     catch (\Exception $e) {
       // Log the error and return NULL.
