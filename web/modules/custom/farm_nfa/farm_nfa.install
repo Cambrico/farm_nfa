@@ -150,3 +150,11 @@ function farm_nfa_update_10014(&$sandbox) {
   \Drupal::service('module_installer')->install(['key']);
   farm_nfa_update_helper(10014);
 }
+
+/**
+ * Configure SMTP transport.
+ */
+function farm_nfa_update_10015(&$sandbox) {
+  \Drupal::service('module_installer')->install(['config_ignore']);
+  farm_nfa_update_helper(10015);
+}

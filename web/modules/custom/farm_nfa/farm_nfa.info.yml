@@ -36,6 +36,8 @@ config_devel:
   - block.block.gin_local_actions
   - block.block.nfa_gin_forests_local_actions
   - claro.settings
+  - config_ignore.settings
+  - config_update_ui.settings
   - core.entity_form_display.asset.land.default
   - core.entity_form_display.asset.land.default
   - core.entity_form_display.log.activity.default

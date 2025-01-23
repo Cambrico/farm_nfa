@@ -18,14 +18,14 @@ function farm_nfa_removed_post_updates() {
 }
 
 /**
- * Change layout of plan page and add image gallery
+ * Change layout of plan page and add image gallery.
  */
 function farm_nfa_post_update_10002(&$sandbox) {
   farm_nfa_update_helper(10002);
 }
 
 /**
- * Populate CFR global id field
+ * Populate CFR global id field.
  */
 function farm_nfa_post_update_cfr_global_ids(&$sandbox) {
 
